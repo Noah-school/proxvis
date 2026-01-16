@@ -41,6 +41,18 @@ func pveInfo(client *proxmox.Client, pveName string) {
 	fmt.Println(pve.CPUInfo.Model)
 }
 
+func makeVM(client *proxmox.Client, VMID int) {
+	pve, err := client.Node(context.Background(), pveName)
+	if err != nil {
+		panic(err)
+	}
+	newVM, err := pve.NewVirtualMachine(context.Background(), VMID)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(newVM.ID)
+}
+
 func main() {
 	loadENV()
 	URL := &url.URL{}
@@ -55,4 +67,5 @@ func main() {
 	)
 
 	pveInfo(client, pveName)
+	makeVM(client, 404)
 }
