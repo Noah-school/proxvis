@@ -43,11 +43,9 @@ func pveInfo(client *proxmox.Client, pveName string) {
 
 func main() {
 	loadENV()
-	URL, err := url.Parse(domain)
-	if err != nil {
-		panic(err)
-	}
+	URL := &url.URL{}
 	URL.Scheme = "https"
+	URL.Host = domain
 	URL.Path = "/api2/json"
 
 	fmt.Println(URL)
