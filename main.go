@@ -14,6 +14,7 @@ var (
 	domain   string
 	apiLogin string
 	apiKey   string
+	pveName  string
 )
 
 func loadENV() {
@@ -25,6 +26,18 @@ func loadENV() {
 	domain = os.Getenv("DOMAIN")
 	apiLogin = os.Getenv("APILOGIN")
 	apiKey = os.Getenv("APIKEY")
+	pveName = os.Getenv("PVENAME")
+}
+
+func pveInfo(client *proxmox.Client, pveName string) {
+	pve, err := client.Node(context.Background(), pveName)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(pve.Name)
+	fmt.Println(pve.Uptime)
+	fmt.Println(pve.CPUInfo.CPUs)
+	fmt.Println(pve.CPUInfo.Model)
 }
 
 func main() {
@@ -36,9 +49,5 @@ func main() {
 		proxmox.WithAPIToken(apiLogin, apiKey),
 	)
 
-	version, err := client.Version(context.Background())
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(version.Release)
+	pveInfo(client, pveName)
 }
