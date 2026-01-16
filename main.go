@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -42,10 +43,16 @@ func pveInfo(client *proxmox.Client, pveName string) {
 
 func main() {
 	loadENV()
+	URL, err := url.Parse(domain)
+	if err != nil {
+		panic(err)
+	}
+	URL.Scheme = "https"
+	URL.Path = "/api2/json"
 
-	URL := "https://" + domain + "/api2/json"
+	fmt.Println(URL)
 
-	client := proxmox.NewClient(URL,
+	client := proxmox.NewClient(URL.String(),
 		proxmox.WithAPIToken(apiLogin, apiKey),
 	)
 
