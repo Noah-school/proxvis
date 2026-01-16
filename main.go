@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/luthermonson/go-proxmox"
@@ -28,6 +29,14 @@ func loadENV() {
 	apiLogin = os.Getenv("APILOGIN")
 	apiKey = os.Getenv("APIKEY")
 	pveName = os.Getenv("PVENAME")
+}
+
+func selectNode(client *proxmox.Client) *proxmox.Node {
+	pve, err := client.Node(context.Background(), pveName)
+	if err != nil {
+		panic(err)
+	}
+	return pve
 }
 
 func pveInfo(client *proxmox.Client, pveName string) {
@@ -53,6 +62,44 @@ func makeVM(client *proxmox.Client, VMID int) {
 	fmt.Println(newVM.ID)
 }
 
+func delVM(client *proxmox.Client, VMID int) {
+	pve := selectNode(client)
+	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	if err != nil {
+		panic(err)
+	}
+	vm.Stop(context.Background())
+	vm.Delete(context.Background())
+	fmt.Println()
+}
+
+func showVM(client *proxmox.Client, VMID int) {
+	pve := selectNode(client)
+	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(vm.Status)
+}
+
+func startVM(client *proxmox.Client, VMID int) {
+	pve := selectNode(client)
+	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	if err != nil {
+		panic(err)
+	}
+	vm.Start(context.Background())
+}
+
+func stopVM(client *proxmox.Client, VMID int) {
+	pve := selectNode(client)
+	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	if err != nil {
+		panic(err)
+	}
+	vm.Stop(context.Background())
+}
+
 func main() {
 	loadENV()
 	URL := &url.URL{}
@@ -66,6 +113,17 @@ func main() {
 		proxmox.WithAPIToken(apiLogin, apiKey),
 	)
 
-	pveInfo(client, pveName)
+	fmt.Println("make 404 vm")
 	makeVM(client, 404)
+	startVM(client, 404)
+	fmt.Println("starting 404 vm")
+	time.Sleep(4 * time.Second)
+	showVM(client, 404)
+	fmt.Println("stopping 404 vm")
+	stopVM(client, 404)
+	time.Sleep(4 * time.Second)
+	showVM(client, 404)
+	fmt.Println("delete 404 vm")
+	time.Sleep(4 * time.Second)
+	delVM(client, 404)
 }
