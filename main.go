@@ -10,15 +10,25 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-func main() {
+var (
+	domain   string
+	apiLogin string
+	apiKey   string
+)
+
+func loadENV() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	domain := os.Getenv("DOMAIN")
-	apiLogin := os.Getenv("APILOGIN")
-	apiKey := os.Getenv("APIKEY")
+	domain = os.Getenv("DOMAIN")
+	apiLogin = os.Getenv("APILOGIN")
+	apiKey = os.Getenv("APIKEY")
+}
+
+func main() {
+	loadENV()
 
 	URL := "https://" + domain + "/api2/json"
 
