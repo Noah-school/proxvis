@@ -23,12 +23,18 @@ func (m *Manager) GenerateTopology(ctx context.Context, pveName string) (string,
 	})
 
 	var sb strings.Builder
-	sb.WriteString("graph LR\n")
-	sb.WriteString("    classDef bridge fill:#f9f,stroke:#333,stroke-width:2px;\n")
-	sb.WriteString("    classDef iface fill:#ccf,stroke:#333,stroke-width:2px;\n")
-	sb.WriteString("    classDef vm fill:#cfc,stroke:#333,stroke-width:2px;\n")
+	sb.WriteString("graph TD\n")
 
-	sb.WriteString(fmt.Sprintf("    subgraph %s[Node: %s]\n", cleanID(pveName), pveName))
+	sb.WriteString("    classDef bridge fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;\n")
+	sb.WriteString("    classDef iface fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;\n")
+	sb.WriteString("    classDef vm fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;\n")
+
+	sb.WriteString(fmt.Sprintf("    subgraph %s [\"Node: %s\"]\n", cleanID(pveName), pveName))
+	sb.WriteString("        direction TB\n")
+	sb.WriteString("        style " + cleanID(pveName) + " fill:#ffffff,stroke:#333,stroke-width:2px\n")
+
+	var bridgeNodes, ifaceNodes, vmNodes strings.Builder
+	var links strings.Builder
 
 	knownBridges := make(map[string]bool)
 
@@ -39,29 +45,26 @@ func (m *Manager) GenerateTopology(ctx context.Context, pveName string) (string,
 			label += fmt.Sprintf("<br/>%s", net.CIDR)
 		}
 
-		class := "iface"
 		if net.Type == "bridge" {
-			class = "bridge"
 			knownBridges[net.Iface] = true
-		}
+			bridgeNodes.WriteString(fmt.Sprintf("            %s[\"%s\"]:::bridge\n", netID, label))
 
-		sb.WriteString(fmt.Sprintf("        %s[\"%s\"]:::%s\n", netID, label, class))
-
-		if net.Type == "bridge" && net.BridgePorts != "" {
-			rawPorts := strings.FieldsFunc(net.BridgePorts, func(r rune) bool {
-				return r == ' ' || r == ','
-			})
-
-			for _, port := range rawPorts {
-				port = strings.TrimSpace(port)
-				if port != "" {
-					portID := cleanID(port)
-					sb.WriteString(fmt.Sprintf("        %s --> %s\n", portID, netID))
+			if net.BridgePorts != "" {
+				rawPorts := strings.FieldsFunc(net.BridgePorts, func(r rune) bool {
+					return r == ' ' || r == ','
+				})
+				for _, port := range rawPorts {
+					port = strings.TrimSpace(port)
+					if port != "" {
+						portID := cleanID(port)
+						links.WriteString(fmt.Sprintf("    %s --> %s\n", portID, netID))
+					}
 				}
 			}
+		} else {
+			ifaceNodes.WriteString(fmt.Sprintf("            %s[\"%s\"]:::iface\n", netID, label))
 		}
 	}
-	sb.WriteString("    end\n")
 
 	vms, err := node.VirtualMachines(ctx)
 	if err != nil {
@@ -88,10 +91,9 @@ func (m *Manager) GenerateTopology(ctx context.Context, pveName string) (string,
 
 		vmNodeID := fmt.Sprintf("vm_%v", vm.VMID)
 		vmLabel := fmt.Sprintf("VM %v<br/>%s", vm.VMID, vm.Name)
-		sb.WriteString(fmt.Sprintf("    %s[\"%s\"]:::vm\n", vmNodeID, vmLabel))
+		vmNodes.WriteString(fmt.Sprintf("            %s[\"%s\"]:::vm\n", vmNodeID, vmLabel))
 
 		nets := vm.VirtualMachineConfig.MergeNets()
-
 		var netKeys []string
 		for k := range nets {
 			netKeys = append(netKeys, k)
@@ -101,14 +103,37 @@ func (m *Manager) GenerateTopology(ctx context.Context, pveName string) (string,
 		for _, k := range netKeys {
 			netConf := nets[k]
 			bridge := parseBridge(netConf)
-			if bridge != "" {
-				if knownBridges[bridge] {
-					bridgeID := cleanID(bridge)
-					sb.WriteString(fmt.Sprintf("    %s -.-> %s\n", vmNodeID, bridgeID))
-				}
+			if bridge != "" && knownBridges[bridge] {
+				bridgeID := cleanID(bridge)
+				links.WriteString(fmt.Sprintf("    %s -.-> %s\n", vmNodeID, bridgeID))
 			}
 		}
 	}
+
+	sb.WriteString("        subgraph Cluster_VMs [\"Virtual Machines\"]\n")
+	sb.WriteString("            direction LR\n")
+	sb.WriteString("            style Cluster_VMs fill:none,stroke:none\n")
+	sb.WriteString(vmNodes.String())
+	sb.WriteString("        end\n")
+
+	sb.WriteString("        subgraph Cluster_Net [\"Network\"]\n")
+	sb.WriteString("            style Cluster_Net fill:none,stroke:none\n")
+
+	sb.WriteString("            subgraph Cluster_Bridges [\"Bridges\"]\n")
+	sb.WriteString("                style Cluster_Bridges fill:none,stroke:none\n")
+	sb.WriteString(bridgeNodes.String())
+	sb.WriteString("            end\n")
+
+	sb.WriteString("            subgraph Cluster_Ifaces [\"Interfaces\"]\n")
+	sb.WriteString("                style Cluster_Ifaces fill:none,stroke:none\n")
+	sb.WriteString(ifaceNodes.String())
+	sb.WriteString("            end\n")
+
+	sb.WriteString("        end\n")
+
+	sb.WriteString("    end\n")
+
+	sb.WriteString(links.String())
 
 	return sb.String(), nil
 }
@@ -116,6 +141,7 @@ func (m *Manager) GenerateTopology(ctx context.Context, pveName string) (string,
 func cleanID(s string) string {
 	s = strings.ReplaceAll(s, "-", "_")
 	s = strings.ReplaceAll(s, ".", "_")
+	s = strings.ReplaceAll(s, " ", "_")
 	return s
 }
 
