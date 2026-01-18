@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -17,10 +20,11 @@ type App struct {
 }
 
 type Config struct {
-	Domain   string
-	APILogin string
-	APIKey   string
-	PVEName  string
+	Domain      string
+	APILogin    string
+	APIKey      string
+	PVEName     string
+	TLSInsecure bool
 }
 
 func loadENV() (*Config, error) {
@@ -29,11 +33,14 @@ func loadENV() (*Config, error) {
 		return nil, err
 	}
 
+	tlsInsecure, _ := strconv.ParseBool(os.Getenv("TLS_INSECURE"))
+
 	return &Config{
-		Domain:   os.Getenv("DOMAIN"),
-		APILogin: os.Getenv("APILOGIN"),
-		APIKey:   os.Getenv("APIKEY"),
-		PVEName:  os.Getenv("PVENAME"),
+		Domain:      os.Getenv("DOMAIN"),
+		APILogin:    os.Getenv("APILOGIN"),
+		APIKey:      os.Getenv("APIKEY"),
+		PVEName:     os.Getenv("PVENAME"),
+		TLSInsecure: tlsInsecure,
 	}, nil
 }
 
@@ -171,8 +178,17 @@ func main() {
 
 	fmt.Println(URL)
 
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: config.TLSInsecure,
+			},
+		},
+	}
+
 	client := proxmox.NewClient(URL.String(),
 		proxmox.WithAPIToken(config.APILogin, config.APIKey),
+		proxmox.WithHTTPClient(httpClient),
 	)
 
 	app := &App{Client: client}
