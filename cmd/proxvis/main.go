@@ -104,4 +104,12 @@ func main() {
 	if err := manager.DelVM(ctx, cfg.PVEName, 404); err != nil {
 		log.Fatal(err)
 	}
+
+	fmt.Println("----------------------------------")
+	fmt.Println("Generating Topology:")
+	topo, err := manager.GenerateTopology(ctx, cfg.PVEName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(topo)
 }
