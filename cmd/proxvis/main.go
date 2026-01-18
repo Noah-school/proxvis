@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 
 	"github.com/luthermonson/go-proxmox"
 	"github.com/noah-school/proxvis/internal/config"
@@ -112,4 +113,10 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println(topo)
+
+	htmlContent := pve.RenderHTML("Proxmox Network Topology", topo)
+	if err := os.WriteFile("topology.html", []byte(htmlContent), 0644); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Exported topology to topology.html")
 }
