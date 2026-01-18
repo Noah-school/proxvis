@@ -12,9 +12,9 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-var (
-	client *proxmox.Client
-)
+type App struct {
+	Client *proxmox.Client
+}
 
 func loadENV() (string, string, string, string) {
 	err := godotenv.Load()
@@ -30,16 +30,16 @@ func loadENV() (string, string, string, string) {
 	return domain, apiLogin, apiKey, pveName
 }
 
-func selectNode(pveName string) (*proxmox.Node, error) {
-	pve, err := client.Node(context.Background(), pveName)
+func (app *App) selectNode(ctx context.Context, pveName string) (*proxmox.Node, error) {
+	pve, err := app.Client.Node(ctx, pveName)
 	if err != nil {
 		return nil, err
 	}
 	return pve, nil
 }
 
-func pveInfo(pveName string) error {
-	pve, err := client.Node(context.Background(), pveName)
+func (app *App) pveInfo(ctx context.Context, pveName string) error {
+	pve, err := app.Client.Node(ctx, pveName)
 	if err != nil {
 		return err
 	}
@@ -50,12 +50,12 @@ func pveInfo(pveName string) error {
 	return nil
 }
 
-func makeVM(pveName string, VMID int) error {
-	pve, err := client.Node(context.Background(), pveName)
+func (app *App) makeVM(ctx context.Context, pveName string, VMID int) error {
+	pve, err := app.Client.Node(ctx, pveName)
 	if err != nil {
 		return err
 	}
-	newVM, err := pve.NewVirtualMachine(context.Background(), VMID)
+	newVM, err := pve.NewVirtualMachine(ctx, VMID)
 	if err != nil {
 		return err
 	}
@@ -63,31 +63,31 @@ func makeVM(pveName string, VMID int) error {
 	return nil
 }
 
-func delVM(pveName string, VMID int) error {
-	pve, err := selectNode(pveName)
+func (app *App) delVM(ctx context.Context, pveName string, VMID int) error {
+	pve, err := app.selectNode(ctx, pveName)
 	if err != nil {
 		return err
 	}
-	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	vm, err := pve.VirtualMachine(ctx, VMID)
 	if err != nil {
 		return err
 	}
-	if _, err := vm.Stop(context.Background()); err != nil {
+	if _, err := vm.Stop(ctx); err != nil {
 		return err
 	}
-	if _, err := vm.Delete(context.Background()); err != nil {
+	if _, err := vm.Delete(ctx); err != nil {
 		return err
 	}
 	fmt.Println()
 	return nil
 }
 
-func showVM(pveName string, VMID int) error {
-	pve, err := selectNode(pveName)
+func (app *App) showVM(ctx context.Context, pveName string, VMID int) error {
+	pve, err := app.selectNode(ctx, pveName)
 	if err != nil {
 		return err
 	}
-	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	vm, err := pve.VirtualMachine(ctx, VMID)
 	if err != nil {
 		return err
 	}
@@ -95,31 +95,31 @@ func showVM(pveName string, VMID int) error {
 	return nil
 }
 
-func startVM(pveName string, VMID int) error {
-	pve, err := selectNode(pveName)
+func (app *App) startVM(ctx context.Context, pveName string, VMID int) error {
+	pve, err := app.selectNode(ctx, pveName)
 	if err != nil {
 		return err
 	}
-	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	vm, err := pve.VirtualMachine(ctx, VMID)
 	if err != nil {
 		return err
 	}
-	if _, err := vm.Start(context.Background()); err != nil {
+	if _, err := vm.Start(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
-func stopVM(pveName string, VMID int) error {
-	pve, err := selectNode(pveName)
+func (app *App) stopVM(ctx context.Context, pveName string, VMID int) error {
+	pve, err := app.selectNode(ctx, pveName)
 	if err != nil {
 		return err
 	}
-	vm, err := pve.VirtualMachine(context.Background(), VMID)
+	vm, err := pve.VirtualMachine(ctx, VMID)
 	if err != nil {
 		return err
 	}
-	if _, err := vm.Stop(context.Background()); err != nil {
+	if _, err := vm.Stop(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -134,37 +134,40 @@ func main() {
 
 	fmt.Println(URL)
 
-	client = proxmox.NewClient(URL.String(),
+	client := proxmox.NewClient(URL.String(),
 		proxmox.WithAPIToken(apiLogin, apiKey),
 	)
 
-	if err := pveInfo(pveName); err != nil {
+	app := &App{Client: client}
+	ctx := context.Background()
+
+	if err := app.pveInfo(ctx, pveName); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("----------------------------------")
 	fmt.Println("make 404 vm")
-	if err := makeVM(pveName, 404); err != nil {
+	if err := app.makeVM(ctx, pveName, 404); err != nil {
 		log.Fatal(err)
 	}
-	if err := startVM(pveName, 404); err != nil {
+	if err := app.startVM(ctx, pveName, 404); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("starting 404 vm")
 	time.Sleep(4 * time.Second)
-	if err := showVM(pveName, 404); err != nil {
+	if err := app.showVM(ctx, pveName, 404); err != nil {
 		log.Println(err)
 	}
 	fmt.Println("stopping 404 vm")
-	if err := stopVM(pveName, 404); err != nil {
+	if err := app.stopVM(ctx, pveName, 404); err != nil {
 		log.Fatal(err)
 	}
 	time.Sleep(4 * time.Second)
-	if err := showVM(pveName, 404); err != nil {
+	if err := app.showVM(ctx, pveName, 404); err != nil {
 		log.Println(err)
 	}
 	fmt.Println("delete 404 vm")
 	time.Sleep(4 * time.Second)
-	if err := delVM(pveName, 404); err != nil {
+	if err := app.delVM(ctx, pveName, 404); err != nil {
 		log.Fatal(err)
 	}
 }
