@@ -3,6 +3,7 @@ package pve
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/luthermonson/go-proxmox"
@@ -10,6 +11,15 @@ import (
 
 type Manager struct {
 	Client *proxmox.Client
+}
+
+type VMConfig struct {
+	Name    string
+	Memory  int
+	Cores   int
+	Sockets int
+	OnBoot  bool
+	ISO     string
 }
 
 func (m *Manager) selectNode(ctx context.Context, pveName string) (*proxmox.Node, error) {
@@ -32,16 +42,67 @@ func (m *Manager) PveInfo(ctx context.Context, pveName string) error {
 	return nil
 }
 
-func (m *Manager) MakeVM(ctx context.Context, pveName string, VMID int) error {
+func (m *Manager) ListISOs(ctx context.Context, pveName string) ([]string, error) {
+	pve, err := m.Client.Node(ctx, pveName)
+	if err != nil {
+		return nil, err
+	}
+
+	storages, err := pve.Storages(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var isos []string
+	for _, storage := range storages {
+		if strings.Contains(storage.Content, "iso") {
+			content, err := storage.GetContent(ctx)
+			if err != nil {
+				continue
+			}
+			for _, item := range content {
+				if strings.Contains(item.Volid, "iso/") {
+					isos = append(isos, item.Volid)
+				}
+			}
+		}
+	}
+	return isos, nil
+}
+
+func (m *Manager) MakeVM(ctx context.Context, pveName string, VMID int, config VMConfig) error {
 	pve, err := m.Client.Node(ctx, pveName)
 	if err != nil {
 		return err
 	}
-	newVM, err := pve.NewVirtualMachine(ctx, VMID)
+
+	var options []proxmox.VirtualMachineOption
+	if config.Name != "" {
+		options = append(options, proxmox.VirtualMachineOption{Name: "name", Value: config.Name})
+	}
+	if config.Memory > 0 {
+		options = append(options, proxmox.VirtualMachineOption{Name: "memory", Value: config.Memory})
+	}
+	if config.Cores > 0 {
+		options = append(options, proxmox.VirtualMachineOption{Name: "cores", Value: config.Cores})
+	}
+	if config.Sockets > 0 {
+		options = append(options, proxmox.VirtualMachineOption{Name: "sockets", Value: config.Sockets})
+	}
+	if config.OnBoot {
+		options = append(options, proxmox.VirtualMachineOption{Name: "onboot", Value: 1})
+	}
+	if config.ISO != "" {
+		options = append(options, proxmox.VirtualMachineOption{Name: "ide2", Value: config.ISO + ",media=cdrom"})
+	}
+
+	task, err := pve.NewVirtualMachine(ctx, VMID, options...)
 	if err != nil {
 		return err
 	}
-	fmt.Println(newVM.ID)
+
+	fmt.Printf("VM Creation Task: %v\n", task.UPID)
+
 	return nil
 }
 
