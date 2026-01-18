@@ -16,18 +16,25 @@ type App struct {
 	Client *proxmox.Client
 }
 
-func loadENV() (string, string, string, string) {
+type Config struct {
+	Domain   string
+	APILogin string
+	APIKey   string
+	PVEName  string
+}
+
+func loadENV() (*Config, error) {
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	domain := os.Getenv("DOMAIN")
-	apiLogin := os.Getenv("APILOGIN")
-	apiKey := os.Getenv("APIKEY")
-	pveName := os.Getenv("PVENAME")
-
-	return domain, apiLogin, apiKey, pveName
+	return &Config{
+		Domain:   os.Getenv("DOMAIN"),
+		APILogin: os.Getenv("APILOGIN"),
+		APIKey:   os.Getenv("APIKEY"),
+		PVEName:  os.Getenv("PVENAME"),
+	}, nil
 }
 
 func (app *App) selectNode(ctx context.Context, pveName string) (*proxmox.Node, error) {
@@ -125,49 +132,86 @@ func (app *App) stopVM(ctx context.Context, pveName string, VMID int) error {
 	return nil
 }
 
+func (app *App) waitForStatus(ctx context.Context, pveName string, VMID int, status string) error {
+	fmt.Printf("Waiting for VM %d to be %s...\n", VMID, status)
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			pve, err := app.selectNode(ctx, pveName)
+			if err != nil {
+				return err
+			}
+			vm, err := pve.VirtualMachine(ctx, VMID)
+			if err != nil {
+				return err
+			}
+			if vm.Status == status {
+				return nil
+			}
+		}
+	}
+}
+
 func main() {
-	domain, apiLogin, apiKey, pveName := loadENV()
-	URL := &url.URL{}
-	URL.Scheme = "https"
-	URL.Host = domain
-	URL.Path = "/api2/json"
+	config, err := loadENV()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	URL := &url.URL{
+		Scheme: "https",
+		Host:   config.Domain,
+		Path:   "/api2/json",
+	}
 
 	fmt.Println(URL)
 
 	client := proxmox.NewClient(URL.String(),
-		proxmox.WithAPIToken(apiLogin, apiKey),
+		proxmox.WithAPIToken(config.APILogin, config.APIKey),
 	)
 
 	app := &App{Client: client}
 	ctx := context.Background()
 
-	if err := app.pveInfo(ctx, pveName); err != nil {
+	if err := app.pveInfo(ctx, config.PVEName); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("----------------------------------")
 	fmt.Println("make 404 vm")
-	if err := app.makeVM(ctx, pveName, 404); err != nil {
+	if err := app.makeVM(ctx, config.PVEName, 404); err != nil {
 		log.Fatal(err)
 	}
-	if err := app.startVM(ctx, pveName, 404); err != nil {
+	if err := app.startVM(ctx, config.PVEName, 404); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("starting 404 vm")
-	time.Sleep(4 * time.Second)
-	if err := app.showVM(ctx, pveName, 404); err != nil {
-		log.Println(err)
-	}
-	fmt.Println("stopping 404 vm")
-	if err := app.stopVM(ctx, pveName, 404); err != nil {
+
+	if err := app.waitForStatus(ctx, config.PVEName, 404, "running"); err != nil {
 		log.Fatal(err)
 	}
-	time.Sleep(4 * time.Second)
-	if err := app.showVM(ctx, pveName, 404); err != nil {
+	if err := app.showVM(ctx, config.PVEName, 404); err != nil {
 		log.Println(err)
 	}
+
+	fmt.Println("stopping 404 vm")
+	if err := app.stopVM(ctx, config.PVEName, 404); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := app.waitForStatus(ctx, config.PVEName, 404, "stopped"); err != nil {
+		log.Fatal(err)
+	}
+	if err := app.showVM(ctx, config.PVEName, 404); err != nil {
+		log.Println(err)
+	}
+
 	fmt.Println("delete 404 vm")
-	time.Sleep(4 * time.Second)
-	if err := app.delVM(ctx, pveName, 404); err != nil {
+	if err := app.delVM(ctx, config.PVEName, 404); err != nil {
 		log.Fatal(err)
 	}
 }
